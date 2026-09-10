@@ -17,6 +17,7 @@ No server, build step, or installation required.
 - Drag & drop folder loading
 - Refresh the selected folder without reloading the page
 - Image zoom and pan
+- Video timeline, play/pause, mute, and playback speed controls
 - Keyboard navigation
 - Dark and light themes
 - Multiple display densities

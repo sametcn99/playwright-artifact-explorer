@@ -384,7 +384,7 @@
     padding: 0; border: 1px solid var(--border-strong); border-radius: 14px;
     background: #080b10; box-shadow: 0 32px 100px rgb(0 0 0 / 50%); overflow: hidden;
   }
-  .viewer-shell { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+  .viewer-shell { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; }
   .viewer-toolbar { min-width: 0; min-height: 52px; display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 12px; border-bottom: 1px solid #202734; background: #0d1118; }
   .viewer-copy { min-width: 0; flex: 1; }
   .viewer-title { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -403,6 +403,18 @@
   .viewer-content.is-zoomed { cursor: grab; }
   .viewer-content.is-dragging { cursor: grabbing; }
   .viewer-content video { width: 100%; height: 100%; }
+  .video-controls { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-top: 1px solid #202734; background: #0d1118; color: #aeb9ca; }
+  .video-control-btn { width: 34px; height: 32px; flex: 0 0 34px; display: grid; place-items: center; border: 1px solid #273142; border-radius: 8px; color: #dce4f0; background: #121821; cursor: pointer; }
+  .video-control-btn:hover { color: white; border-color: #3a475d; background: #19212d; }
+  .video-time { min-width: 42px; color: #8996aa; font-size: 10px; font-variant-numeric: tabular-nums; text-align: center; }
+  .video-timeline { --progress: 0%; min-width: 100px; height: 18px; flex: 1 1 auto; margin: 0; appearance: none; background: transparent; cursor: pointer; }
+  .video-timeline::-webkit-slider-runnable-track { height: 5px; border-radius: 999px; background: linear-gradient(to right, #79a7ff var(--progress), #283143 var(--progress)); }
+  .video-timeline::-webkit-slider-thumb { width: 14px; height: 14px; margin-top: -4.5px; appearance: none; border: 2px solid #0d1118; border-radius: 50%; background: #79a7ff; box-shadow: 0 0 0 1px rgb(121 167 255 / 45%); }
+  .video-timeline::-moz-range-track { height: 5px; border-radius: 999px; background: #283143; }
+  .video-timeline::-moz-range-progress { height: 5px; border-radius: 999px; background: #79a7ff; }
+  .video-timeline::-moz-range-thumb { width: 12px; height: 12px; border: 2px solid #0d1118; border-radius: 50%; background: #79a7ff; }
+  .video-speed { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 7px 0 9px; border: 1px solid #273142; border-radius: 8px; color: #8996aa; background: #121821; font-size: 10px; }
+  .video-speed select { border: 0; color: #dce4f0; background-color: #121821; cursor: pointer; }
   .viewer-nav { position: absolute; top: 50%; translate: 0 -50%; z-index: 2; width: 42px; height: 58px; border-radius: 10px; border: 1px solid #263143; color: white; background: rgb(13 17 24 / 78%); font-size: 24px; cursor: pointer; backdrop-filter: blur(8px); }
   .viewer-nav:hover { background: rgb(25 33 45 / 94%); }
   .viewer-nav:disabled { visibility: hidden; }
@@ -460,6 +472,9 @@
     .viewer-copy { flex-basis: calc(100% - 50px); }
     .viewer-counter { order: 3; }
     .viewer-actions { order: 4; width: 100%; overflow-x: auto; }
+    .video-controls { gap: 7px; padding-inline: 8px; }
+    .video-speed span { display: none; }
+    .video-time { min-width: 36px; }
     .site-footer { align-items: flex-start; flex-direction: column; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -627,6 +642,25 @@
       <div class="viewer-content" id="viewer-content"></div>
       <button class="viewer-nav viewer-next" id="viewer-next" type="button" aria-label="Next media">›</button>
     </div>
+    <div class="video-controls" id="video-controls" aria-label="Video controls" hidden>
+      <button class="video-control-btn" id="video-play" type="button" aria-label="Play video">▶</button>
+      <span class="video-time" id="video-current">0:00</span>
+      <input class="video-timeline" id="video-timeline" name="video-timeline" type="range" min="0" max="0" value="0" step="0.01" aria-label="Video timeline">
+      <span class="video-time" id="video-duration">0:00</span>
+      <button class="video-control-btn" id="video-mute" type="button" aria-label="Mute video">🔊</button>
+      <label class="video-speed">
+        <span>Speed</span>
+        <select id="video-speed" name="video-speed" aria-label="Playback speed">
+          <option value="0.25">0.25×</option>
+          <option value="0.5">0.5×</option>
+          <option value="0.75">0.75×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+          <option value="2">2×</option>
+        </select>
+      </label>
+    </div>
     <nav class="viewer-strip" id="viewer-strip" aria-label="Media thumbnails"></nav>
   </div>
 </dialog>
@@ -646,6 +680,7 @@
       <span>Zoom image</span><kbd>+ / −</kbd>
       <span>Reset image zoom</span><kbd>0</kbd>
       <span>Toggle 2× zoom</span><kbd>Double click</kbd>
+      <span>Play / pause video</span><kbd>Space</kbd>
     </div>
   </div>
 </dialog>
@@ -706,6 +741,13 @@
   const viewerCopyPath = $("viewer-copy-path");
   const viewerOpenTab = $("viewer-open-tab");
   const viewerSave = $("viewer-save");
+  const videoControls = $("video-controls");
+  const videoPlay = $("video-play");
+  const videoTimeline = $("video-timeline");
+  const videoCurrent = $("video-current");
+  const videoDuration = $("video-duration");
+  const videoMute = $("video-mute");
+  const videoSpeed = $("video-speed");
 
   let model = new Map();
   let sourceFiles = [];
@@ -1240,6 +1282,48 @@
     applyImageTransform();
   }
 
+  const activeVideo = () => viewerContent.querySelector("video");
+
+  function formatVideoTime(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+    const total = Math.floor(seconds);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const remainder = total % 60;
+    return hours
+      ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
+      : `${minutes}:${String(remainder).padStart(2, "0")}`;
+  }
+
+  function syncVideoControls() {
+    const video = activeVideo();
+    if (!video) {
+      videoControls.hidden = true;
+      return;
+    }
+    const duration = Number.isFinite(video.duration) ? video.duration : 0;
+    const currentTime = Math.min(video.currentTime || 0, duration || 0);
+    videoControls.hidden = false;
+    videoPlay.textContent = video.paused ? "▶" : "❚❚";
+    videoPlay.setAttribute("aria-label", video.paused ? "Play video" : "Pause video");
+    videoTimeline.max = String(duration);
+    videoTimeline.value = String(currentTime);
+    videoTimeline.setAttribute("aria-valuetext", `${formatVideoTime(currentTime)} of ${formatVideoTime(duration)}`);
+    videoTimeline.style.setProperty("--progress", duration ? `${(currentTime / duration) * 100}%` : "0%");
+    videoCurrent.textContent = formatVideoTime(currentTime);
+    videoDuration.textContent = formatVideoTime(duration);
+    videoMute.textContent = video.muted ? "🔇" : "🔊";
+    videoMute.setAttribute("aria-label", video.muted ? "Unmute video" : "Mute video");
+    videoSpeed.value = String(video.playbackRate);
+  }
+
+  function bindVideoControls(video) {
+    for (const eventName of ["loadedmetadata", "durationchange", "timeupdate", "play", "pause", "volumechange", "ratechange", "ended"]) {
+      video.addEventListener(eventName, syncVideoControls);
+    }
+    syncVideoControls();
+  }
+
   function showViewerItem(index) {
     if (!gallery.length) return;
     viewerIndex = (index + gallery.length) % gallery.length;
@@ -1258,7 +1342,7 @@
       media.alt = file.name;
       media.draggable = false;
     } else {
-      media.controls = true;
+      media.controls = false;
       media.autoplay = true;
       media.loop = true;
       media.muted = true;
@@ -1266,8 +1350,14 @@
       media.preload = "auto";
     }
     viewerContent.replaceChildren(media);
-    if (media instanceof HTMLImageElement) applyImageTransform();
-    else { applyImageTransform(); media.play().catch(() => {}); }
+    if (media instanceof HTMLImageElement) {
+      videoControls.hidden = true;
+      applyImageTransform();
+    } else {
+      applyImageTransform();
+      bindVideoControls(media);
+      media.play().catch(() => syncVideoControls());
+    }
 
     viewerTitle.textContent = prettify(testDir);
     viewerMeta.textContent = `${runId} / ${pathFor(file)} · ${formatBytes(file.size)}`;
@@ -1481,6 +1571,28 @@
   viewerZoomOut.addEventListener("click", () => setZoom(zoom - 0.25));
   viewerZoomIn.addEventListener("click", () => setZoom(zoom + 0.25));
   viewerZoomReset.addEventListener("click", resetZoom);
+  videoPlay.addEventListener("click", () => {
+    const video = activeVideo();
+    if (!video) return;
+    if (video.paused) video.play().catch(() => syncVideoControls());
+    else video.pause();
+  });
+  videoTimeline.addEventListener("input", () => {
+    const video = activeVideo();
+    if (!video || !Number.isFinite(video.duration)) return;
+    video.currentTime = Number(videoTimeline.value);
+    syncVideoControls();
+  });
+  videoMute.addEventListener("click", () => {
+    const video = activeVideo();
+    if (!video) return;
+    video.muted = !video.muted;
+  });
+  videoSpeed.addEventListener("change", () => {
+    const video = activeVideo();
+    if (!video) return;
+    video.playbackRate = Number(videoSpeed.value);
+  });
   viewerCopyPath.addEventListener("click", async () => {
     const entry = currentViewerEntry();
     if (entry) await copyText(pathFor(entry.file), "Artifact path copied");
@@ -1533,6 +1645,7 @@
   viewerContent.addEventListener("pointercancel", finishDrag);
   viewer.addEventListener("click", (event) => { if (event.target === viewer) viewer.close(); });
   viewer.addEventListener("keydown", (event) => {
+    if (event.target.closest("button, input, select")) return;
     if (event.key === "ArrowLeft") { event.preventDefault(); showViewerItem(viewerIndex - 1); }
     else if (event.key === "ArrowRight") { event.preventDefault(); showViewerItem(viewerIndex + 1); }
     else if (event.key === "Home") { event.preventDefault(); showViewerItem(0); }
@@ -1540,12 +1653,18 @@
     else if (event.key === "+" || event.key === "=") { event.preventDefault(); setZoom(zoom + 0.25); }
     else if (event.key === "-") { event.preventDefault(); setZoom(zoom - 0.25); }
     else if (event.key === "0") { event.preventDefault(); resetZoom(); }
+    else if (event.key === " " && activeVideo()) {
+      event.preventDefault();
+      if (activeVideo().paused) activeVideo().play().catch(() => syncVideoControls());
+      else activeVideo().pause();
+    }
   });
   viewer.addEventListener("close", () => {
     const video = viewerContent.querySelector("video");
     if (video) video.pause();
     viewerContent.replaceChildren();
     viewerStrip.replaceChildren();
+    videoControls.hidden = true;
     viewerIndex = -1;
   });
 
