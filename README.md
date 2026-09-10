@@ -2,6 +2,8 @@
 
 A lightweight, single-file viewer for browsing Playwright test screenshots and videos locally.
 
+[Live App](https://playwright-artifact-explorer.vercel.app/) · [GitHub Repository](https://github.com/sametcn99/playwright-artifact-explorer)
+
 No server, build step, or installation required.
 
 ## Features
@@ -13,6 +15,7 @@ No server, build step, or installation required.
 - Filter by media type
 - Run and artifact statistics
 - Drag & drop folder loading
+- Refresh the selected folder without reloading the page
 - Image zoom and pan
 - Keyboard navigation
 - Dark and light themes
@@ -26,7 +29,7 @@ Everything runs locally in the browser. Files are not uploaded anywhere.
 ## Usage
 
 1. Download or clone the repository.
-2. Open `e2e-report.html` in your browser.
+2. Open `index.html` in your browser, or use the [live app](https://playwright-artifact-explorer.vercel.app/).
 3. Select or drag your Playwright `test-results` folder.
 4. Explore the artifacts.
 

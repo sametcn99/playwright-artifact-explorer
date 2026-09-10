@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#111827"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(150 30) rotate(35) scale(720 520)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4f86f7" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#4f86f7" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="74" y="66" width="64" height="64" rx="17" fill="#172033" stroke="#354158"/>
+  <path d="M94 84h24v30H94zM100 93h12m-12 7h8m-8 7h11" fill="none" stroke="#79a7ff" stroke-width="3" stroke-linecap="round"/>
+  <text x="158" y="106" fill="#f4f7fb" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="27" font-weight="700">Playwright Artifact Explorer</text>
+  <text x="74" y="260" fill="#f4f7fb" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="68" font-weight="750" letter-spacing="-2">Review every test artifact.</text>
+  <text x="74" y="338" fill="#f4f7fb" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="68" font-weight="750" letter-spacing="-2">Keep every file private.</text>
+  <text x="77" y="411" fill="#bcc6d6" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="25">Screenshots, videos, filters, and fast local inspection.</text>
+  <g transform="translate(76 492)" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="20" fill="#9aa7ba">
+    <circle cx="8" cy="-7" r="8" fill="#64d99a"/>
+    <path d="m4-7 3 3 6-7" fill="none" stroke="#07110b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="27" y="0">Local processing</text>
+    <circle cx="258" cy="-7" r="8" fill="#64d99a"/>
+    <path d="m254-7 3 3 6-7" fill="none" stroke="#07110b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="277" y="0">No installation</text>
+    <circle cx="465" cy="-7" r="8" fill="#64d99a"/>
+    <path d="m461-7 3 3 6-7" fill="none" stroke="#07110b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="484" y="0">Open source</text>
+  </g>
+  <text x="1124" y="570" text-anchor="end" fill="#61708a" font-family="ui-monospace,Consolas,monospace" font-size="18">playwright-artifact-explorer.vercel.app</text>
+</svg>

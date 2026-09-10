@@ -4,7 +4,44 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<title>Playwright Artifact Explorer</title>
+<title>Playwright Artifact Explorer — Screenshots &amp; Videos</title>
+<meta name="description" content="Explore Playwright test screenshots and videos in your browser. Filter failures, inspect recordings, compare artifacts, and keep every file private.">
+<meta name="keywords" content="Playwright artifact viewer, Playwright test results, screenshot viewer, test video viewer, end-to-end testing">
+<meta name="author" content="sametcn99">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0a0c10" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f7fb" media="(prefers-color-scheme: light)">
+<link rel="canonical" href="https://playwright-artifact-explorer.vercel.app/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%234f86f7'/%3E%3Cpath d='M18 14h28v36H18zM24 24h16M24 32h10M24 40h14' fill='none' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Playwright Artifact Explorer">
+<meta property="og:title" content="Playwright Artifact Explorer">
+<meta property="og:description" content="Browse Playwright screenshots and videos locally. Fast, private, and install-free.">
+<meta property="og:url" content="https://playwright-artifact-explorer.vercel.app/">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://playwright-artifact-explorer.vercel.app/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Playwright Artifact Explorer — review every test artifact while keeping files private">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Playwright Artifact Explorer">
+<meta name="twitter:description" content="Browse Playwright screenshots and videos locally. Fast, private, and install-free.">
+<meta name="twitter:image" content="https://playwright-artifact-explorer.vercel.app/og-image.png">
+<meta name="twitter:image:alt" content="Playwright Artifact Explorer — review every test artifact while keeping files private">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Playwright Artifact Explorer",
+  "url": "https://playwright-artifact-explorer.vercel.app/",
+  "codeRepository": "https://github.com/sametcn99/playwright-artifact-explorer",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Any",
+  "description": "A private, browser-based viewer for Playwright test screenshots and videos.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Person", "name": "sametcn99", "url": "https://github.com/sametcn99" }
+}
+</script>
 <style>
   :root {
     color-scheme: dark;
@@ -60,7 +97,7 @@
   }
 
   * { box-sizing: border-box; }
-  html { scrollbar-gutter: stable; }
+  html { scrollbar-gutter: stable; scroll-behavior: smooth; }
   body {
     margin: 0;
     min-height: 100vh;
@@ -75,9 +112,19 @@
   button, input, select { font: inherit; }
   button, select, input[type="search"] { color: inherit; }
   button { border: 0; }
+  button, a, label { touch-action: manipulation; -webkit-tap-highlight-color: rgb(121 167 255 / 18%); }
+  a { color: inherit; }
   [hidden] { display: none !important; }
 
+  .skip-link {
+    position: fixed; left: 16px; top: 12px; z-index: 100;
+    padding: 9px 13px; border-radius: 9px; color: white; background: var(--accent-strong);
+    transform: translateY(-160%); transition: transform 140ms ease;
+  }
+  .skip-link:focus { transform: translateY(0); }
+
   .app-shell { width: min(100%, var(--content-width)); margin: 0 auto; padding: 0 24px 56px; }
+  #main-content { scroll-margin-top: 80px; }
 
   .topbar {
     position: sticky;
@@ -98,7 +145,7 @@
     gap: 14px;
   }
 
-  .brand { min-width: 0; display: flex; align-items: center; gap: 12px; }
+  .brand { min-width: 0; display: flex; align-items: center; gap: 12px; text-decoration: none; border-radius: 10px; }
   .brand-mark {
     width: 34px; height: 34px; flex: 0 0 34px;
     border: 1px solid var(--border-strong);
@@ -109,7 +156,7 @@
   }
   .brand-mark svg { width: 18px; height: 18px; color: var(--accent); }
   .brand-copy { min-width: 0; }
-  .brand-title { margin: 0; font-size: 14px; line-height: 1.2; letter-spacing: -.01em; }
+  .brand-title { margin: 0; font-size: 14px; line-height: 1.2; letter-spacing: -.01em; font-weight: 700; }
   .brand-subtitle { margin-top: 3px; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
@@ -130,10 +177,10 @@
     padding: 0 12px;
     color: var(--text-soft);
     cursor: pointer;
-    transition: 140ms ease;
+    transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
   }
   .btn:hover, .file-btn:hover, .icon-btn:hover { color: var(--text); border-color: var(--border-strong); background: var(--panel-2); }
-  .btn:focus-visible, .file-btn:focus-within, .icon-btn:focus-visible, select:focus-visible, input:focus-visible, .media-card:focus-visible {
+  button:focus-visible, a:focus-visible, .btn:focus-visible, .file-btn:focus-within, .icon-btn:focus-visible, select:focus-visible, input:focus-visible, .media-card:focus-visible {
     outline: 2px solid color-mix(in srgb, var(--accent) 82%, white);
     outline-offset: 2px;
   }
@@ -142,14 +189,20 @@
   .btn.ghost, .icon-btn { background: transparent; }
   .btn svg, .file-btn svg, .icon-btn svg { width: 15px; height: 15px; }
   .icon-btn { width: 36px; padding: 0; }
+  .icon-btn.is-refreshing svg g { animation: spin 700ms linear infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   input[type="file"] { display: none; }
 
-  .hero { padding: 34px 0 20px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 20px; }
+  .hero { padding: 52px 0 26px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 32px; }
   .eyebrow { color: var(--accent); font-weight: 700; font-size: 11px; letter-spacing: .11em; text-transform: uppercase; }
-  .hero h2 { margin: 7px 0 6px; font-size: clamp(23px, 3vw, 34px); line-height: 1.08; letter-spacing: -.035em; }
-  .hero p { max-width: 760px; margin: 0; color: var(--text-soft); }
+  .hero h1 { max-width: 880px; margin: 9px 0 12px; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.02; letter-spacing: -.045em; text-wrap: balance; }
+  .hero p { max-width: 760px; margin: 0; color: var(--text-soft); font-size: 15px; text-wrap: pretty; }
   .hero-meta { color: var(--muted); text-align: right; font-size: 12px; }
   .hero-meta strong { color: var(--text-soft); font-weight: 600; }
+
+  .privacy-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 14px 22px; margin-top: 18px; color: var(--muted); font-size: 11px; }
+  .privacy-item { display: inline-flex; align-items: center; gap: 7px; }
+  .privacy-item svg { width: 14px; height: 14px; color: var(--success); }
 
   .dropzone {
     margin: 6px 0 22px;
@@ -161,8 +214,9 @@
     place-items: center;
     padding: 26px;
     text-align: center;
-    transition: 160ms ease;
+    transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
   }
+  .dropzone:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong)); box-shadow: inset 0 0 0 1px rgb(121 167 255 / 4%); }
   .dropzone.is-dragging { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-1px); }
   .dropzone-icon {
     width: 46px; height: 46px; margin: 0 auto 12px;
@@ -170,7 +224,7 @@
     color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
   }
   .dropzone-icon svg { width: 22px; height: 22px; }
-  .dropzone h3 { margin: 0 0 6px; font-size: 16px; }
+  .dropzone h2 { margin: 0 0 6px; font-size: 16px; }
   .dropzone p { margin: 0 auto 14px; max-width: 650px; color: var(--muted); font-size: 12px; }
   .dropzone code { color: var(--text-soft); background: var(--panel-3); border: 1px solid var(--border); padding: 1px 5px; border-radius: 5px; }
 
@@ -223,7 +277,7 @@
 
   .select-wrap { height: 36px; border-radius: 9px; display: flex; align-items: center; padding: 0 7px 0 10px; gap: 6px; color: var(--muted); }
   .select-wrap span { font-size: 11px; }
-  .select-wrap select { border: 0; outline: 0; background: transparent; cursor: pointer; color: var(--text-soft); }
+  .select-wrap select { border: 0; outline: 0; background-color: var(--panel); cursor: pointer; color: var(--text-soft); }
 
   .control-divider { width: 1px; height: 24px; background: var(--border); }
   .result-count { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
@@ -245,7 +299,7 @@
   details.run > summary:hover { background: var(--panel-2); }
 
   .run-summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 13px 14px; }
-  .chevron { width: 18px; height: 18px; display: grid; place-items: center; color: var(--muted); transition: 140ms ease; }
+  .chevron { width: 18px; height: 18px; display: grid; place-items: center; color: var(--muted); transition: transform 140ms ease; }
   .chevron svg { width: 14px; height: 14px; }
   details[open] .chevron { transform: rotate(90deg); }
   .run-main { min-width: 0; }
@@ -297,7 +351,7 @@
     overflow: hidden;
     background: #05070a;
     cursor: zoom-in;
-    transition: 150ms ease;
+    transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
   }
   .media-card:hover { transform: translateY(-1px); border-color: var(--border-strong); box-shadow: 0 10px 26px rgb(0 0 0 / 18%); }
   .media-slot { position: relative; aspect-ratio: 16 / 9; display: grid; place-items: center; overflow: hidden; color: #677186; background: #07090d; }
@@ -374,6 +428,12 @@
   .toast { max-width: 360px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 10px; color: var(--text-soft); background: color-mix(in srgb, var(--bg-elevated) 95%, transparent); box-shadow: var(--shadow); backdrop-filter: blur(14px); animation: toast-in 160ms ease-out; }
   @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
 
+  .site-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 28px 0 0; color: var(--muted); font-size: 12px; }
+  .footer-links { display: flex; align-items: center; gap: 16px; }
+  .site-footer a { text-underline-offset: 3px; }
+  .site-footer a:hover { color: var(--text); }
+  .site-footer a:focus-visible, .brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
   @media (max-width: 1100px) {
     .stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .hero { grid-template-columns: 1fr; }
@@ -388,6 +448,7 @@
     .brand-subtitle { display: none; }
     .top-actions .hide-mobile { display: none; }
     .hero { padding-top: 24px; }
+    .hero h1 { font-size: clamp(29px, 10vw, 42px); }
     .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .controls { top: 65px; }
     .search-wrap { min-width: 100%; flex-basis: 100%; }
@@ -399,6 +460,7 @@
     .viewer-copy { flex-basis: calc(100% - 50px); }
     .viewer-counter { order: 3; }
     .viewer-actions { order: 4; width: 100%; overflow-x: auto; }
+    .site-footer { align-items: flex-start; flex-direction: column; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
@@ -406,39 +468,48 @@
 </style>
 </head>
 <body data-density="comfortable">
+<a class="skip-link" href="#main-content">Skip to main content</a>
 <div class="app-shell">
   <header class="topbar">
     <div class="topbar-inner">
-      <div class="brand">
+      <a class="brand" href="/" aria-label="Playwright Artifact Explorer home">
         <div class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h5M8 16h7"/></svg>
         </div>
         <div class="brand-copy">
-          <h1 class="brand-title">Playwright Artifact Explorer</h1>
+          <div class="brand-title" translate="no">Playwright Artifact Explorer</div>
           <div class="brand-subtitle">Explore Playwright screenshots and videos locally — nothing leaves your browser</div>
         </div>
-      </div>
+      </a>
       <div class="top-actions">
+        <a class="btn ghost hide-mobile" href="https://github.com/sametcn99/playwright-artifact-explorer" target="_blank" rel="noopener noreferrer">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .7a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.2.8-.6v-2.2c-3.4.7-4.1-1.4-4.1-1.4-.5-1.4-1.4-1.8-1.4-1.8-1.1-.8.1-.8.1-.8 1.3.1 1.9 1.3 1.9 1.3 1.1 1.9 2.9 1.4 3.6 1.1.1-.8.4-1.4.8-1.7-2.7-.3-5.6-1.4-5.6-6.1 0-1.3.5-2.4 1.3-3.3-.1-.3-.6-1.6.1-3.3 0 0 1.1-.4 3.5 1.3a12.1 12.1 0 0 1 6.3 0c2.4-1.7 3.5-1.3 3.5-1.3.7 1.7.3 3 .1 3.3.8.9 1.3 2 1.3 3.3 0 4.7-2.9 5.8-5.6 6.1.4.4.8 1.1.8 2.2v3.3c0 .4.2.7.8.6A11.5 11.5 0 0 0 12 .7Z"/></svg>
+          GitHub
+        </a>
         <button class="icon-btn" id="theme-toggle" type="button" title="Toggle theme" aria-label="Toggle theme">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg>
+        </button>
+        <button class="icon-btn" id="refresh-folder" type="button" title="Refresh selected folder" aria-label="Refresh selected folder" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><g><path d="M20 6v5h-5"/><path d="M18.5 15a7 7 0 1 1-.3-6.4L20 11"/></g></svg>
         </button>
         <button class="btn ghost hide-mobile" id="help-open" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.3 2.3 0 0 1 4.4.9c0 1.7-2.2 2-2.2 3.6M12 17h.01"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.3 2.3 0 0 1 4.4.9c0 1.7-2.2 2-2.2 3.6M12 17h.01"/></svg>
           Shortcuts
         </button>
-        <label class="file-btn primary">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h6l2 2h8v10H4z"/><path d="M12 12v5M9.5 14.5 12 12l2.5 2.5"/></svg>
-          Open folder
-          <input id="picker" type="file" webkitdirectory directory multiple>
-        </label>
+        <button class="file-btn primary" id="open-folder" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h6l2 2h8v10H4z"/><path d="M12 12v5M9.5 14.5 12 12l2.5 2.5"/></svg>
+          Open Folder
+        </button>
+        <input id="picker" type="file" webkitdirectory directory multiple aria-label="Open a Playwright test-results folder">
       </div>
     </div>
   </header>
 
-  <section class="hero">
+  <main id="main-content">
+  <section class="hero" aria-labelledby="page-title">
     <div>
       <div class="eyebrow">Playwright artifact workspace</div>
-      <h2>Skim an entire test run without opening ninety folders.</h2>
+      <h1 id="page-title">Review Every Playwright Artifact in One Place.</h1>
       <p>Load a Playwright <code>test-results</code> folder, filter failures, compare screenshots, inspect recordings, and move through the artifact set with the keyboard.</p>
     </div>
     <div class="hero-meta" id="loaded-meta">No folder loaded</div>
@@ -449,16 +520,19 @@
       <div class="dropzone-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h6l2 2h8v10H4z"/><path d="M12 12v5M9.5 14.5 12 12l2.5 2.5"/></svg>
       </div>
-      <h3>Drop your test-results folder here</h3>
+      <h2>Drop Your test-results Folder Here</h2>
       <p>Or pick it manually. The browser reads files in place; screenshots and videos are never uploaded. Playwright traces still open with <code>bunx playwright show-trace &lt;path&gt;</code>.</p>
-      <label class="file-btn">
-        Choose test-results
-        <input id="picker-empty" type="file" webkitdirectory directory multiple>
-      </label>
+      <button class="file-btn" id="open-folder-empty" type="button">Choose test-results</button>
+      <input id="picker-empty" type="file" webkitdirectory directory multiple aria-label="Choose a Playwright test-results folder">
+      <div class="privacy-row" aria-label="Privacy and setup benefits">
+        <span class="privacy-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>100% local processing</span>
+        <span class="privacy-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>No installation</span>
+        <span class="privacy-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>Open source</span>
+      </div>
     </div>
   </section>
 
-  <section id="dashboard" hidden>
+  <section id="dashboard" aria-label="Loaded artifact dashboard" hidden>
     <div class="stats-grid" aria-label="Artifact summary">
       <div class="stat-card"><div class="stat-label">Runs</div><div class="stat-value" id="stat-runs">0</div></div>
       <div class="stat-card"><div class="stat-label">Tests</div><div class="stat-value" id="stat-tests">0</div></div>
@@ -471,19 +545,19 @@
     <div class="workspace">
       <div class="controls">
         <label class="search-wrap" for="search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
-          <input id="search" type="search" placeholder="Search test, run or file…" autocomplete="off">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+          <input id="search" name="artifact-search" type="search" placeholder="Search test, run or file…" autocomplete="off">
           <span class="shortcut-hint">/</span>
         </label>
 
-        <div class="segmented" id="status-filter" aria-label="Status filter">
+        <div class="segmented" id="status-filter" role="group" aria-label="Status filter">
           <button type="button" data-status="all" aria-pressed="true">All</button>
           <button type="button" data-status="failed" aria-pressed="false">Failed</button>
           <button type="button" data-status="passed" aria-pressed="false">Passed</button>
           <button type="button" data-status="unknown" aria-pressed="false">Unknown</button>
         </div>
 
-        <div class="segmented" id="media-filter" aria-label="Media filter">
+        <div class="segmented" id="media-filter" role="group" aria-label="Media filter">
           <button type="button" data-media="all" aria-pressed="true">All media</button>
           <button type="button" data-media="image" aria-pressed="false">Images</button>
           <button type="button" data-media="video" aria-pressed="false">Videos</button>
@@ -491,7 +565,7 @@
 
         <label class="select-wrap">
           <span>Sort</span>
-          <select id="sort-select" aria-label="Sort runs">
+          <select id="sort-select" name="sort-runs" aria-label="Sort runs">
             <option value="newest">Newest</option>
             <option value="oldest">Oldest</option>
             <option value="failures">Most failures</option>
@@ -501,7 +575,7 @@
 
         <label class="select-wrap">
           <span>Density</span>
-          <select id="density-select" aria-label="Media density">
+          <select id="density-select" name="media-density" aria-label="Media density">
             <option value="compact">Compact</option>
             <option value="comfortable" selected>Comfortable</option>
             <option value="large">Large</option>
@@ -515,9 +589,18 @@
         <span class="result-count" id="counts"></span>
       </div>
       <div class="active-note" id="active-note">Showing all loaded artifacts.</div>
-      <main class="runs" id="runs"></main>
+      <div class="runs" id="runs"></div>
     </div>
   </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>Built for faster, private Playwright debugging.</span>
+    <nav class="footer-links" aria-label="Project links">
+      <a href="https://github.com/sametcn99/playwright-artifact-explorer" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://playwright-artifact-explorer.vercel.app/" aria-current="page">Live app</a>
+    </nav>
+  </footer>
 </div>
 
 <dialog class="viewer" id="viewer" aria-labelledby="viewer-title">
@@ -578,6 +661,9 @@
   const $ = (id) => document.getElementById(id);
   const picker = $("picker");
   const pickerEmpty = $("picker-empty");
+  const openFolder = $("open-folder");
+  const openFolderEmpty = $("open-folder-empty");
+  const refreshFolder = $("refresh-folder");
   const dropzone = $("dropzone");
   const dashboard = $("dashboard");
   const runsEl = $("runs");
@@ -629,6 +715,7 @@
   let panX = 0;
   let panY = 0;
   let drag = null;
+  let directoryHandle = null;
   let urls = new WeakMap();
   const objectUrls = new Set();
 
@@ -1004,7 +1091,15 @@
     if (searchEl.value.trim()) notes.push(`search “${searchEl.value.trim()}”`);
     if (state.status !== "all") notes.push(`${state.status} tests`);
     if (state.media !== "all") notes.push(`${state.media === "image" ? "images" : "videos"} only`);
-    activeNote.innerHTML = notes.length ? `Filtered by <strong>${notes.join(" · ")}</strong>.` : "Showing all loaded artifacts.";
+    activeNote.replaceChildren();
+    if (notes.length) {
+      activeNote.append("Filtered by ");
+      const summary = document.createElement("strong");
+      summary.textContent = notes.join(" · ");
+      activeNote.append(summary, ".");
+    } else {
+      activeNote.textContent = "Showing all loaded artifacts.";
+    }
     updateExpandLabel();
   }
 
@@ -1012,6 +1107,39 @@
     const details = [...runsEl.querySelectorAll("details.run")];
     if (!details.length) { expandBtn.textContent = "Expand all"; return; }
     expandBtn.textContent = details.every((item) => item.open) ? "Collapse all" : "Expand all";
+  }
+
+  async function filesFromDirectory(handle, prefix = "") {
+    const files = [];
+    for await (const entry of handle.values()) {
+      if (entry.kind === "file") {
+        const file = await entry.getFile();
+        const relativePath = `${prefix}${file.name}`;
+        try { Object.defineProperty(file, "__relativePath", { value: relativePath, configurable: true }); }
+        catch { file.__relativePath = relativePath; }
+        files.push(file);
+      } else if (entry.kind === "directory") {
+        files.push(...await filesFromDirectory(entry, `${prefix}${entry.name}/`));
+      }
+    }
+    return files;
+  }
+
+  async function chooseDirectory(fallbackInput) {
+    if ("showDirectoryPicker" in window) {
+      try {
+        const handle = await window.showDirectoryPicker({ mode: "read" });
+        const files = await filesFromDirectory(handle);
+        directoryHandle = handle;
+        loadFiles(files, handle.name);
+        return;
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        console.warn("Directory handle unavailable; using the browser picker instead.", error);
+      }
+    }
+    fallbackInput.value = "";
+    fallbackInput.click();
   }
 
   function loadFiles(files, sourceLabel = "test-results") {
@@ -1022,6 +1150,7 @@
     if (!model.size) {
       dashboard.hidden = true;
       dropzone.hidden = false;
+      refreshFolder.hidden = true;
       loadedMeta.textContent = "No compatible media found";
       toast("No screenshots or videos found in that folder.");
       return;
@@ -1033,6 +1162,7 @@
     syncSegments();
     dropzone.hidden = true;
     dashboard.hidden = false;
+    refreshFolder.hidden = false;
     loadedMeta.dataset.source = sourceLabel;
     updateStats();
     render();
@@ -1260,8 +1390,36 @@
     render();
   }
 
-  picker.addEventListener("change", () => loadFiles(picker.files, picker.files[0]?.webkitRelativePath?.split("/")[0] || "test-results"));
-  pickerEmpty.addEventListener("change", () => loadFiles(pickerEmpty.files, pickerEmpty.files[0]?.webkitRelativePath?.split("/")[0] || "test-results"));
+  openFolder.addEventListener("click", () => chooseDirectory(picker));
+  openFolderEmpty.addEventListener("click", () => chooseDirectory(pickerEmpty));
+  picker.addEventListener("change", () => {
+    directoryHandle = null;
+    loadFiles(picker.files, picker.files[0]?.webkitRelativePath?.split("/")[0] || "test-results");
+  });
+  pickerEmpty.addEventListener("change", () => {
+    directoryHandle = null;
+    loadFiles(pickerEmpty.files, pickerEmpty.files[0]?.webkitRelativePath?.split("/")[0] || "test-results");
+  });
+  refreshFolder.addEventListener("click", async () => {
+    refreshFolder.disabled = true;
+    refreshFolder.classList.add("is-refreshing");
+    try {
+      if (!directoryHandle) {
+        toast("Select the folder again to refresh its files.");
+        await chooseDirectory(picker);
+        return;
+      }
+      const files = await filesFromDirectory(directoryHandle);
+      loadFiles(files, directoryHandle.name);
+      toast("Folder refreshed");
+    } catch (error) {
+      console.error(error);
+      toast("Could not refresh the folder. Open it again to renew access.");
+    } finally {
+      refreshFolder.disabled = false;
+      refreshFolder.classList.remove("is-refreshing");
+    }
+  });
 
   for (const eventName of ["dragenter", "dragover"]) {
     dropzone.addEventListener(eventName, (event) => { event.preventDefault(); dropzone.classList.add("is-dragging"); });
@@ -1271,7 +1429,9 @@
   }
   dropzone.addEventListener("drop", async (event) => {
     try {
+      const droppedHandle = await event.dataTransfer.items[0]?.getAsFileSystemHandle?.();
       const files = await filesFromDrop(event);
+      directoryHandle = droppedHandle?.kind === "directory" ? droppedHandle : null;
       loadFiles(files, "dropped folder");
     } catch (error) {
       console.error(error);
