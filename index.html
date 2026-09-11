@@ -402,7 +402,34 @@
   .viewer-content img { user-select: none; -webkit-user-drag: none; touch-action: none; transform-origin: center; will-change: transform; }
   .viewer-content.is-zoomed { cursor: grab; }
   .viewer-content.is-dragging { cursor: grabbing; }
-  .viewer-content video { width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: contain; }
+  .viewer-content video { width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: contain; cursor: pointer; }
+  .video-click-feedback {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 3;
+    width: clamp(68px, 9vw, 92px);
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgb(255 255 255 / 20%);
+    border-radius: 50%;
+    color: white;
+    background: rgb(8 12 18 / 70%);
+    box-shadow: 0 14px 38px rgb(0 0 0 / 30%), inset 0 1px 0 rgb(255 255 255 / 12%);
+    backdrop-filter: blur(10px);
+    pointer-events: none;
+    transform: translate(-50%, -50%) scale(.72);
+    animation: video-click-feedback 560ms cubic-bezier(.2, .75, .25, 1) forwards;
+  }
+  .video-click-feedback svg { width: 34%; height: 34%; filter: drop-shadow(0 2px 5px rgb(0 0 0 / 28%)); }
+  .video-click-feedback.is-play svg { margin-left: 5%; }
+  @keyframes video-click-feedback {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(.68); }
+    24% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    72% { opacity: .92; transform: translate(-50%, -50%) scale(1.04); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(1.2); }
+  }
   .video-controls { position: relative; z-index: 4; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-top: 1px solid #202734; background: #0d1118; color: #aeb9ca; box-shadow: 0 -8px 24px rgb(0 0 0 / 18%); }
   .video-control-btn { width: 34px; height: 32px; flex: 0 0 34px; display: grid; place-items: center; border: 1px solid #273142; border-radius: 8px; color: #dce4f0; background: #121821; cursor: pointer; }
   .video-control-btn:hover { color: white; border-color: #3a475d; background: #19212d; }
@@ -1328,6 +1355,31 @@
     syncVideoControls();
   }
 
+  function showVideoClickFeedback(kind) {
+    viewerContent.querySelector(".video-click-feedback")?.remove();
+    const feedback = document.createElement("div");
+    feedback.className = `video-click-feedback is-${kind}`;
+    feedback.setAttribute("aria-hidden", "true");
+    feedback.innerHTML = kind === "play"
+      ? '<svg viewBox="0 0 24 24" fill="currentColor"><path d="m8 5 11 7-11 7z"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
+    viewerContent.append(feedback);
+    feedback.addEventListener("animationend", () => feedback.remove(), { once: true });
+  }
+
+  function toggleActiveVideo(showFeedback = false) {
+    const video = activeVideo();
+    if (!video) return;
+    if (video.paused) {
+      video.play()
+        .then(() => { if (showFeedback) showVideoClickFeedback("play"); })
+        .catch(() => syncVideoControls());
+    } else {
+      video.pause();
+      if (showFeedback) showVideoClickFeedback("pause");
+    }
+  }
+
   function showViewerItem(index) {
     if (!gallery.length) return;
     viewerIndex = (index + gallery.length) % gallery.length;
@@ -1577,10 +1629,7 @@
   viewerZoomIn.addEventListener("click", () => setZoom(zoom + 0.25));
   viewerZoomReset.addEventListener("click", resetZoom);
   videoPlay.addEventListener("click", () => {
-    const video = activeVideo();
-    if (!video) return;
-    if (video.paused) video.play().catch(() => syncVideoControls());
-    else video.pause();
+    toggleActiveVideo();
   });
   videoTimeline.addEventListener("input", () => {
     const video = activeVideo();
@@ -1628,6 +1677,10 @@
     setZoom(zoom > 1 ? 1 : 2, event);
   });
 
+  viewerContent.addEventListener("click", (event) => {
+    if (event.target instanceof HTMLVideoElement) toggleActiveVideo(true);
+  });
+
   viewerContent.addEventListener("pointerdown", (event) => {
     if (!currentImage() || zoom <= 1 || event.button !== 0) return;
     drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, panX, panY };
@@ -1661,8 +1714,7 @@
     else if (event.key === "0") { event.preventDefault(); resetZoom(); }
     else if (event.key === " " && activeVideo()) {
       event.preventDefault();
-      if (activeVideo().paused) activeVideo().play().catch(() => syncVideoControls());
-      else activeVideo().pause();
+      toggleActiveVideo(true);
     }
   });
   viewer.addEventListener("close", () => {
