@@ -337,9 +337,11 @@
   .test-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
   .test-name { font-size: 13px; font-weight: 650; letter-spacing: -.01em; word-break: break-word; }
   .test-meta { margin-top: 3px; color: var(--muted); font-size: 10px; }
-  .test-actions { display: flex; gap: 6px; }
+  .test-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
   .tiny-btn { height: 28px; border: 1px solid var(--border); border-radius: 7px; background: transparent; color: var(--muted); padding: 0 8px; cursor: pointer; font-size: 10px; }
   .tiny-btn:hover { color: var(--text-soft); background: var(--panel-2); }
+  .tiny-btn.trace-btn { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); background: var(--accent-soft); }
+  .tiny-btn.trace-btn:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 48%, var(--border)); }
 
   .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--media-min), 1fr)); gap: 10px; margin-top: 11px; }
   .media-card {
@@ -367,6 +369,8 @@
   html[data-theme="light"] .media-caption { border-top-color: var(--border); color: var(--text-soft); background: var(--panel-2); }
   .media-name { min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; }
   .media-size { flex: 0 0 auto; color: #68758a; font-size: 9px; font-variant-numeric: tabular-nums; }
+  .media-trace-btn { width: 27px; height: 24px; flex: 0 0 27px; display: grid; place-items: center; padding: 0; border: 1px solid rgb(121 167 255 / 28%); border-radius: 6px; color: #9dbdff; background: rgb(79 134 247 / 12%); cursor: pointer; font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .media-trace-btn:hover { color: white; border-color: rgb(121 167 255 / 55%); background: rgb(79 134 247 / 22%); }
 
   body[data-density="compact"] { --media-min: 220px; }
   body[data-density="compact"] .test { padding: 10px 12px; }
@@ -624,6 +628,16 @@
           </select>
         </label>
 
+        <label class="select-wrap">
+          <span>Trace CLI</span>
+          <select id="trace-runner" name="trace-runner" aria-label="Trace command package runner">
+            <option value="bun" selected>Bun · bunx</option>
+            <option value="npm">npm · npx</option>
+            <option value="pnpm">pnpm exec</option>
+            <option value="yarn">Yarn</option>
+          </select>
+        </label>
+
         <div class="control-divider" aria-hidden="true"></div>
 
         <button class="btn" id="expand" type="button">Expand all</button>
@@ -659,6 +673,7 @@
         <button id="viewer-zoom-in" type="button" aria-label="Zoom in">+</button>
         <button class="wide" id="viewer-zoom-reset" type="button">Fit</button>
         <button class="wide" id="viewer-copy-path" type="button">Copy path</button>
+        <button class="wide" id="viewer-copy-trace" type="button" hidden>Copy trace command</button>
         <button class="wide" id="viewer-open-tab" type="button">Open tab</button>
         <button class="wide" id="viewer-save" type="button">Save</button>
         <button id="viewer-close" type="button" aria-label="Close viewer">×</button>
@@ -718,6 +733,7 @@
 (() => {
   const IMAGE = /\.(png|jpe?g|webp|gif)$/i;
   const VIDEO = /\.(webm|mp4)$/i;
+  const TRACE = /(?:^|[-_.])trace(?:[-_.].*)?\.(?:zip|trace)$/i;
   const SETTINGS_KEY = "playwright-artifact-explorer-v2";
 
   const $ = (id) => document.getElementById(id);
@@ -736,6 +752,7 @@
   const mediaFilter = $("media-filter");
   const sortSelect = $("sort-select");
   const densitySelect = $("density-select");
+  const traceRunner = $("trace-runner");
   const expandBtn = $("expand");
   const exportSummaryBtn = $("export-summary");
   const activeNote = $("active-note");
@@ -766,6 +783,7 @@
   const viewerZoomReset = $("viewer-zoom-reset");
   const viewerZoomValue = $("viewer-zoom-value");
   const viewerCopyPath = $("viewer-copy-path");
+  const viewerCopyTrace = $("viewer-copy-trace");
   const viewerOpenTab = $("viewer-open-tab");
   const viewerSave = $("viewer-save");
   const videoControls = $("video-controls");
@@ -778,6 +796,9 @@
 
   let model = new Map();
   let sourceFiles = [];
+  let traceFiles = [];
+  let traceIndex = new Map();
+  let sourcePathPrefix = "";
   let gallery = [];
   let viewerIndex = -1;
   let zoom = 1;
@@ -794,6 +815,7 @@
     sort: "newest",
     density: "comfortable",
     playbackRate: 1,
+    traceRunner: "bun",
   };
 
   function iconMarkup(kind) {
@@ -818,6 +840,7 @@
         density: state.density,
         sort: state.sort,
         playbackRate: state.playbackRate,
+        traceRunner: state.traceRunner,
       }));
     } catch {}
   }
@@ -830,9 +853,11 @@
     state.density = ["compact", "comfortable", "large"].includes(saved.density) ? saved.density : "comfortable";
     state.sort = ["newest", "oldest", "failures", "name"].includes(saved.sort) ? saved.sort : "newest";
     state.playbackRate = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].includes(Number(saved.playbackRate)) ? Number(saved.playbackRate) : 1;
+    state.traceRunner = ["bun", "npm", "pnpm", "yarn"].includes(saved.traceRunner) ? saved.traceRunner : "bun";
     document.body.dataset.density = state.density;
     densitySelect.value = state.density;
     sortSelect.value = state.sort;
+    traceRunner.value = state.traceRunner;
     videoSpeed.value = String(state.playbackRate);
   }
 
@@ -854,6 +879,54 @@
 
   function pathFor(file) {
     return file.__relativePath || file.webkitRelativePath || file.name;
+  }
+
+  function artifactGroupFor(file) {
+    const parts = pathFor(file).replace(/\\/g, "/").split("/").filter(Boolean);
+    parts.pop();
+    return {
+      testDir: parts.pop() || "(unknown test)",
+      runId: parts.pop() || "(unknown run)",
+    };
+  }
+
+  const traceKey = (runId, testDir) => `${runId}\u0000${testDir}`;
+
+  function indexTraceFiles(files) {
+    const index = new Map();
+    for (const file of files) {
+      const { runId, testDir } = artifactGroupFor(file);
+      const key = traceKey(runId, testDir);
+      const current = index.get(key);
+      if (!current || /^trace\.zip$/i.test(file.name)) index.set(key, file);
+    }
+    return index;
+  }
+
+  function traceFor(runId, testDir) {
+    return traceIndex.get(traceKey(runId, testDir)) || null;
+  }
+
+  function traceCommandFor(file) {
+    let relativePath = pathFor(file).replace(/\\/g, "/").replace(/^\.\//, "");
+    if (sourcePathPrefix && !relativePath.toLowerCase().startsWith(`${sourcePathPrefix.toLowerCase()}/`)) {
+      relativePath = `${sourcePathPrefix}/${relativePath}`;
+    }
+    const quotedPath = `"./${relativePath}"`;
+    const commands = {
+      bun: `bunx playwright show-trace ${quotedPath}`,
+      npm: `npx playwright show-trace ${quotedPath}`,
+      pnpm: `pnpm exec playwright show-trace ${quotedPath}`,
+      yarn: `yarn playwright show-trace ${quotedPath}`,
+    };
+    return commands[state.traceRunner];
+  }
+
+  const traceRunnerName = () => ({ bun: "Bun", npm: "npm", pnpm: "pnpm", yarn: "Yarn" })[state.traceRunner];
+
+  async function copyTraceCommand(file) {
+    if (!file) return;
+    await copyText(traceCommandFor(file), `${traceRunnerName()} trace command copied`);
   }
 
   function formatBytes(bytes) {
@@ -882,15 +955,12 @@
     const runs = new Map();
     for (const file of files) {
       if (!IMAGE.test(file.name) && !VIDEO.test(file.name)) continue;
-      const parts = pathFor(file).split("/").filter(Boolean);
-      parts.pop();
-      const testDir = parts.pop() || "(unknown test)";
-      const runDir = parts.pop() || "(unknown run)";
-      const tests = runs.get(runDir) ?? new Map();
+      const { runId, testDir } = artifactGroupFor(file);
+      const tests = runs.get(runId) ?? new Map();
       const media = tests.get(testDir) ?? [];
       media.push(file);
       tests.set(testDir, media);
-      runs.set(runDir, tests);
+      runs.set(runId, tests);
     }
     return runs;
   }
@@ -962,7 +1032,7 @@
   }
 
   function slotFor(entry) {
-    const { file } = entry;
+    const { file, traceFile } = entry;
     const figure = document.createElement("figure");
     figure.className = "media-card";
     figure.tabIndex = 0;
@@ -1003,6 +1073,19 @@
     size.className = "media-size";
     size.textContent = formatBytes(file.size);
     caption.append(name, size);
+    if (traceFile) {
+      const traceButton = document.createElement("button");
+      traceButton.className = "media-trace-btn";
+      traceButton.type = "button";
+      traceButton.textContent = ">_";
+      traceButton.title = `Copy ${traceRunnerName()} trace command`;
+      traceButton.setAttribute("aria-label", `Copy trace command for ${file.name}`);
+      traceButton.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        await copyTraceCommand(traceFile);
+      });
+      caption.append(traceButton);
+    }
     figure.append(slot, caption);
     observer.observe(slot);
     return figure;
@@ -1114,6 +1197,7 @@
         head.className = "test-head";
         const imageCount = allMedia.filter((file) => IMAGE.test(file.name)).length;
         const videoCount = allMedia.filter((file) => VIDEO.test(file.name)).length;
+        const traceFile = traceFor(runId, testDir);
         head.innerHTML = `
           <span class="status-dot" aria-hidden="true"></span>
           <div class="test-title-wrap">
@@ -1121,14 +1205,25 @@
               <span class="pill ${status}">${status}</span>
               <span class="test-name"></span>
             </div>
-            <div class="test-meta">${imageCount} image${imageCount === 1 ? "" : "s"} · ${videoCount} video${videoCount === 1 ? "" : "s"} · ${formatBytes(allMedia.reduce((sum, file) => sum + (file.size || 0), 0))}</div>
+            <div class="test-meta">${imageCount} image${imageCount === 1 ? "" : "s"} · ${videoCount} video${videoCount === 1 ? "" : "s"} · ${traceFile ? "trace ready · " : ""}${formatBytes(allMedia.reduce((sum, file) => sum + (file.size || 0), 0))}</div>
           </div>
-          <div class="test-actions"><button class="tiny-btn" type="button">Copy name</button></div>`;
+          <div class="test-actions"><button class="tiny-btn copy-name" type="button">Copy name</button></div>`;
         head.querySelector(".test-name").textContent = prettify(testDir);
-        head.querySelector(".tiny-btn").addEventListener("click", async (event) => {
+        head.querySelector(".copy-name").addEventListener("click", async (event) => {
           event.stopPropagation();
           await copyText(prettify(testDir), "Test name copied");
         });
+        if (traceFile) {
+          const traceButton = document.createElement("button");
+          traceButton.className = "tiny-btn trace-btn";
+          traceButton.type = "button";
+          traceButton.textContent = `Copy ${traceRunnerName()} trace`;
+          traceButton.addEventListener("click", async (event) => {
+            event.stopPropagation();
+            await copyTraceCommand(traceFile);
+          });
+          head.querySelector(".test-actions").append(traceButton);
+        }
 
         const mediaEl = document.createElement("div");
         mediaEl.className = "media-grid";
@@ -1137,7 +1232,7 @@
           return byKind !== 0 ? byKind : left.name.localeCompare(right.name);
         });
         for (const file of ordered) {
-          const entry = { file, runId, testDir, status };
+          const entry = { file, runId, testDir, status, traceFile };
           gallery.push(entry);
           mediaEl.append(slotFor(entry));
         }
@@ -1204,7 +1299,7 @@
         const handle = await window.showDirectoryPicker({ mode: "read" });
         const files = await filesFromDirectory(handle);
         directoryHandle = handle;
-        loadFiles(files, handle.name);
+        loadFiles(files, handle.name, true);
         return;
       } catch (error) {
         if (error?.name === "AbortError") return;
@@ -1215,9 +1310,13 @@
     fallbackInput.click();
   }
 
-  function loadFiles(files, sourceLabel = "test-results") {
+  function loadFiles(files, sourceLabel = "test-results", includeSourceRoot = false) {
     releaseObjectUrls();
-    sourceFiles = [...files].filter((file) => IMAGE.test(file.name) || VIDEO.test(file.name));
+    const selectedFiles = [...files];
+    sourceFiles = selectedFiles.filter((file) => IMAGE.test(file.name) || VIDEO.test(file.name));
+    traceFiles = selectedFiles.filter((file) => TRACE.test(file.name));
+    traceIndex = indexTraceFiles(traceFiles);
+    sourcePathPrefix = includeSourceRoot ? sourceLabel.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/$/, "") : "";
     model = group(sourceFiles);
 
     if (!model.size) {
@@ -1418,6 +1517,8 @@
 
     viewerTitle.textContent = prettify(testDir);
     viewerMeta.textContent = `${runId} / ${pathFor(file)} · ${formatBytes(file.size)}`;
+    viewerCopyTrace.hidden = !entry.traceFile;
+    viewerCopyTrace.textContent = `Copy ${traceRunnerName()} trace`;
     viewerCounter.textContent = `${viewerIndex + 1} / ${gallery.length}`;
     viewerPrev.disabled = gallery.length < 2;
     viewerNext.disabled = gallery.length < 2;
@@ -1506,6 +1607,7 @@
           name: prettify(testDir),
           directory: testDir,
           status: statusFor(media),
+          trace: traceFor(runId, testDir) ? pathFor(traceFor(runId, testDir)) : null,
           media: media.map((file) => ({ name: file.name, path: pathFor(file), size: file.size, type: IMAGE.test(file.name) ? "image" : "video" })),
         })),
       })),
@@ -1557,7 +1659,7 @@
         return;
       }
       const files = await filesFromDirectory(directoryHandle);
-      loadFiles(files, directoryHandle.name);
+      loadFiles(files, directoryHandle.name, true);
       toast("Folder refreshed");
     } catch (error) {
       console.error(error);
@@ -1597,6 +1699,7 @@
   });
   sortSelect.addEventListener("change", () => { state.sort = sortSelect.value; persistSettings(); render(); });
   densitySelect.addEventListener("change", () => { state.density = densitySelect.value; document.body.dataset.density = state.density; persistSettings(); });
+  traceRunner.addEventListener("change", () => { state.traceRunner = traceRunner.value; persistSettings(); render(); });
   expandBtn.addEventListener("click", () => {
     const all = [...runsEl.querySelectorAll("details.run")];
     const opening = all.some((details) => !details.open);
@@ -1651,6 +1754,9 @@
   viewerCopyPath.addEventListener("click", async () => {
     const entry = currentViewerEntry();
     if (entry) await copyText(pathFor(entry.file), "Artifact path copied");
+  });
+  viewerCopyTrace.addEventListener("click", async () => {
+    await copyTraceCommand(currentViewerEntry()?.traceFile);
   });
   viewerOpenTab.addEventListener("click", () => {
     const entry = currentViewerEntry();
