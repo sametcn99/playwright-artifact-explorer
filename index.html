@@ -875,6 +875,69 @@
     return url;
   }
 
+  const posterCache = new Map();
+
+  function videoPosterFor(file) {
+    let pending = posterCache.get(file);
+    if (pending) return pending;
+    pending = new Promise((resolve) => {
+      const probe = document.createElement("video");
+      probe.preload = "auto";
+      probe.muted = true;
+      probe.playsInline = true;
+      probe.crossOrigin = "anonymous";
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        probe.removeAttribute("src");
+        probe.load();
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish(null), 8000);
+      const capture = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          const width = probe.videoWidth;
+          const height = probe.videoHeight;
+          if (!width || !height) {
+            clearTimeout(timer);
+            finish(null);
+            return;
+          }
+          const scale = Math.min(1, 320 / width);
+          canvas.width = Math.max(1, Math.round(width * scale));
+          canvas.height = Math.max(1, Math.round(height * scale));
+          canvas.getContext("2d").drawImage(probe, 0, 0, canvas.width, canvas.height);
+          clearTimeout(timer);
+          finish(canvas.toDataURL("image/jpeg", 0.75));
+        } catch {
+          clearTimeout(timer);
+          finish(null);
+        }
+      };
+      probe.addEventListener("error", () => {
+        clearTimeout(timer);
+        finish(null);
+      });
+      probe.addEventListener("seeked", capture, { once: true });
+      probe.addEventListener("loadeddata", () => {
+        const duration = Number.isFinite(probe.duration) ? probe.duration : 0;
+        // Early frames are usually blank or dark, so grab a frame near the end.
+        const target = duration > 0.4 ? Math.max(0, duration - 0.2) : 0;
+        if (target <= 0) {
+          capture();
+          return;
+        }
+        probe.currentTime = target;
+      }, { once: true });
+      probe.src = urlFor(file);
+      probe.load();
+    });
+    posterCache.set(file, pending);
+    return pending;
+  }
+
   function releaseObjectUrls() {
     for (const url of objectUrls) URL.revokeObjectURL(url);
     objectUrls.clear();
@@ -1025,6 +1088,9 @@
         video.playsInline = true;
         video.src = urlFor(file);
         slot.replaceChildren(video);
+        videoPosterFor(file).then((poster) => {
+          if (poster) video.poster = poster;
+        });
       }
     }
   }, { rootMargin: "500px" });
@@ -1541,6 +1607,15 @@
         image.alt = "";
         image.src = urlFor(thumbEntry.file);
         thumb.append(image);
+      } else if (VIDEO.test(thumbEntry.file.name)) {
+        const image = document.createElement("img");
+        image.loading = "lazy";
+        image.alt = "";
+        thumb.prepend(image);
+        videoPosterFor(thumbEntry.file).then((poster) => {
+          if (poster) image.src = poster;
+          else image.remove();
+        });
       }
       const kind = document.createElement("span");
       kind.className = "viewer-thumb-kind";
