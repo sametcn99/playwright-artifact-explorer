@@ -865,6 +865,16 @@
     videoSpeed.value = String(state.playbackRate);
   }
 
+  function scrollThumbIntoView(thumb) {
+    const strip = thumb.parentElement;
+    if (!strip) return;
+    const stripBox = strip.getBoundingClientRect();
+    const thumbBox = thumb.getBoundingClientRect();
+    // Already fully visible in the strip: leave the scroll position alone.
+    if (thumbBox.left >= stripBox.left - 1 && thumbBox.right <= stripBox.right + 1) return;
+    thumb.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }
+
   function urlFor(file) {
     let url = urls.get(file);
     if (!url) {
@@ -1625,7 +1635,7 @@
       viewerStrip.append(thumb);
       if (thumbIndex === viewerIndex) {
         if (restoreThumbFocus) thumb.focus({ preventScroll: true });
-        requestAnimationFrame(() => thumb.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" }));
+        requestAnimationFrame(() => scrollThumbIntoView(thumb));
       }
     }
   }
