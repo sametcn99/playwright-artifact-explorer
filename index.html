@@ -693,6 +693,10 @@
       <label class="video-speed">
         <span>Speed</span>
         <select id="video-speed" name="video-speed" aria-label="Playback speed">
+          <option value="0.05">0.05×</option>
+          <option value="0.1">0.1×</option>
+          <option value="0.15">0.15×</option>
+          <option value="0.2">0.2×</option>
           <option value="0.25">0.25×</option>
           <option value="0.5">0.5×</option>
           <option value="0.75">0.75×</option>
@@ -852,7 +856,7 @@
     document.documentElement.dataset.theme = saved.theme || preferredTheme;
     state.density = ["compact", "comfortable", "large"].includes(saved.density) ? saved.density : "comfortable";
     state.sort = ["newest", "oldest", "failures", "name"].includes(saved.sort) ? saved.sort : "newest";
-    state.playbackRate = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].includes(Number(saved.playbackRate)) ? Number(saved.playbackRate) : 1;
+    state.playbackRate = [0.05, 0.1, 0.15, 0.2, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].includes(Number(saved.playbackRate)) ? Number(saved.playbackRate) : 1;
     state.traceRunner = ["bun", "npm", "pnpm", "yarn"].includes(saved.traceRunner) ? saved.traceRunner : "bun";
     document.body.dataset.density = state.density;
     densitySelect.value = state.density;
