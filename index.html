@@ -444,6 +444,9 @@
   .video-timeline::-moz-range-track { height: 5px; border-radius: 999px; background: #283143; }
   .video-timeline::-moz-range-progress { height: 5px; border-radius: 999px; background: #79a7ff; }
   .video-timeline::-moz-range-thumb { width: 12px; height: 12px; border: 2px solid #0d1118; border-radius: 50%; background: #79a7ff; }
+  .video-controls { flex-wrap: wrap; }
+  #video-trim-status { font-size: 10px; }
+  .viewer-content video[data-preparing="true"] { visibility: hidden; }
   .video-speed { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 7px 0 9px; border: 1px solid #273142; border-radius: 8px; color: #8996aa; background: #121821; font-size: 10px; }
   .video-speed select { border: 0; color: #dce4f0; background-color: #121821; cursor: pointer; }
   .viewer-nav { position: absolute; top: 50%; translate: 0 -50%; z-index: 2; width: 42px; height: 58px; border-radius: 10px; border: 1px solid #263143; color: white; background: rgb(13 17 24 / 78%); font-size: 24px; cursor: pointer; backdrop-filter: blur(8px); }
@@ -690,6 +693,10 @@
       <input class="video-timeline" id="video-timeline" name="video-timeline" type="range" min="0" max="0" value="0" step="0.01" aria-label="Video timeline">
       <span class="video-time" id="video-duration">0:00</span>
       <button class="video-control-btn" id="video-mute" type="button" aria-label="Mute video">🔊</button>
+      <label class="video-speed" title="Skip the detected white intro during playback. Saved files stay original.">
+        <input id="video-trim" type="checkbox"> Skip white intro
+      </label>
+      <span id="video-trim-status" role="status"></span>
       <label class="video-speed">
         <span>Speed</span>
         <select id="video-speed" name="video-speed" aria-label="Playback speed">
@@ -797,6 +804,10 @@
   const videoDuration = $("video-duration");
   const videoMute = $("video-mute");
   const videoSpeed = $("video-speed");
+  const videoTrim = $("video-trim");
+  const videoTrimStatus = $("video-trim-status");
+  const introCache = new WeakMap();
+  let trimRequest = 0;
 
   let model = new Map();
   let sourceFiles = [];
@@ -819,6 +830,7 @@
     sort: "newest",
     density: "comfortable",
     playbackRate: 1,
+    trimWhiteIntro: false,
     traceRunner: "bun",
   };
 
@@ -844,6 +856,7 @@
         density: state.density,
         sort: state.sort,
         playbackRate: state.playbackRate,
+        trimWhiteIntro: state.trimWhiteIntro,
         traceRunner: state.traceRunner,
       }));
     } catch {}
@@ -863,6 +876,8 @@
     sortSelect.value = state.sort;
     traceRunner.value = state.traceRunner;
     videoSpeed.value = String(state.playbackRate);
+    state.trimWhiteIntro = saved.trimWhiteIntro === true;
+    videoTrim.checked = state.trimWhiteIntro;
   }
 
   function scrollThumbIntoView(thumb) {
@@ -1494,6 +1509,89 @@
 
   const activeVideo = () => viewerContent.querySelector("video");
 
+  // Only a near-uniform white frame counts as blank; retain pages with visible content.
+  function isWhiteFrame(pixels) {
+    let nonWhite = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (Math.min(pixels[i], pixels[i + 1], pixels[i + 2]) < 245) nonWhite++;
+    }
+    return nonWhite / (pixels.length / 4) <= 0.001;
+  }
+
+  function whiteIntroFor(file) {
+    if (introCache.has(file)) return introCache.get(file);
+    const pending = new Promise((resolve) => {
+      const probe = document.createElement("video");
+      probe.muted = true;
+      probe.preload = "auto";
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = 180;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      let settled = false;
+      let lastWhite = 0;
+      let firstContent = null;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        probe.removeAttribute("src");
+        probe.load();
+        resolve(result);
+      };
+      const timer = setTimeout(() => finish(null), 15000);
+      const sample = () => {
+        if (settled) return;
+        try {
+          context.drawImage(probe, 0, 0, canvas.width, canvas.height);
+          const white = isWhiteFrame(context.getImageData(0, 0, canvas.width, canvas.height).data);
+          const time = probe.currentTime;
+          if (!white) {
+            if (time === 0) return finish(0);
+            firstContent = time;
+          } else {
+            lastWhite = time;
+          }
+          if (firstContent !== null) {
+            // Refine the transition to within 20ms (less than a typical video frame).
+            if (firstContent - lastWhite <= 0.02) return finish(firstContent);
+            probe.currentTime = (lastWhite + firstContent) / 2;
+          } else {
+            const limit = Math.min(30, probe.duration - 0.04);
+            if (!Number.isFinite(limit) || time >= limit) return finish(null);
+            probe.currentTime = Math.min(limit, time + 0.1);
+          }
+        } catch { finish(null); }
+      };
+      probe.addEventListener("loadeddata", sample, { once: true });
+      probe.addEventListener("seeked", sample);
+      probe.addEventListener("error", () => finish(null), { once: true });
+      probe.src = urlFor(file);
+    });
+    introCache.set(file, pending);
+    return pending;
+  }
+
+  const videoStart = (video) => state.trimWhiteIntro ? Number(video.dataset.trimStart || 0) : 0;
+
+  async function prepareVideo(video, file, resume) {
+    const request = ++trimRequest;
+    video.pause();
+    video.dataset.preparing = "true";
+    video.dataset.resumeAfterTrim = String(resume);
+    videoTrimStatus.textContent = state.trimWhiteIntro ? "Scanning intro…" : "";
+    syncVideoControls();
+    const start = state.trimWhiteIntro ? await whiteIntroFor(file) : 0;
+    if (request !== trimRequest || activeVideo() !== video || !viewer.open) return;
+    video.dataset.preparing = "false";
+    video.dataset.trimStart = String(start || 0);
+    videoTrimStatus.textContent = !state.trimWhiteIntro ? "" : start === null
+      ? "Intro not detected" : start > 0 ? `Skipped ${start.toFixed(2)}s` : "No white intro";
+    if (video.currentTime < videoStart(video)) video.currentTime = videoStart(video);
+    syncVideoControls();
+    if (resume) video.play().catch(() => syncVideoControls());
+  }
+
   function formatVideoTime(seconds) {
     if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
     const total = Math.floor(seconds);
@@ -1511,8 +1609,11 @@
       videoControls.hidden = true;
       return;
     }
-    const duration = Number.isFinite(video.duration) ? video.duration : 0;
-    const currentTime = Math.min(video.currentTime || 0, duration || 0);
+    const start = videoStart(video);
+    const duration = Number.isFinite(video.duration) ? Math.max(0, video.duration - start) : 0;
+    const currentTime = Math.max(0, Math.min((video.currentTime || 0) - start, duration));
+    videoPlay.disabled = video.dataset.preparing === "true";
+    videoTimeline.disabled = videoPlay.disabled || !duration;
     videoControls.hidden = false;
     videoPlay.textContent = video.paused ? "▶" : "❚❚";
     videoPlay.setAttribute("aria-label", video.paused ? "Play video" : "Pause video");
@@ -1528,6 +1629,11 @@
   }
 
   function bindVideoControls(video) {
+    video.addEventListener("ended", () => {
+      if (activeVideo() !== video) return;
+      video.currentTime = videoStart(video);
+      video.play().catch(() => syncVideoControls());
+    });
     for (const eventName of ["loadedmetadata", "durationchange", "timeupdate", "play", "pause", "volumechange", "ratechange", "ended"]) {
       video.addEventListener(eventName, syncVideoControls);
     }
@@ -1548,7 +1654,7 @@
 
   function toggleActiveVideo(showFeedback = false) {
     const video = activeVideo();
-    if (!video) return;
+    if (!video || video.dataset.preparing === "true") return;
     if (video.paused) {
       video.play()
         .then(() => { if (showFeedback) showVideoClickFeedback("play"); })
@@ -1578,8 +1684,8 @@
       media.draggable = false;
     } else {
       media.controls = false;
-      media.autoplay = true;
-      media.loop = true;
+      media.autoplay = false;
+      media.loop = false;
       media.muted = true;
       media.playbackRate = state.playbackRate;
       media.playsInline = true;
@@ -1592,7 +1698,7 @@
     } else {
       applyImageTransform();
       bindVideoControls(media);
-      media.play().catch(() => syncVideoControls());
+      prepareVideo(media, file, true);
     }
 
     viewerTitle.textContent = prettify(testDir);
@@ -1826,7 +1932,7 @@
   videoTimeline.addEventListener("input", () => {
     const video = activeVideo();
     if (!video || !Number.isFinite(video.duration)) return;
-    video.currentTime = Number(videoTimeline.value);
+    video.currentTime = videoStart(video) + Number(videoTimeline.value);
     syncVideoControls();
   });
   videoMute.addEventListener("click", () => {
@@ -1839,6 +1945,14 @@
     state.playbackRate = Number(videoSpeed.value);
     persistSettings();
     if (video) video.playbackRate = state.playbackRate;
+  });
+  videoTrim.addEventListener("change", () => {
+    state.trimWhiteIntro = videoTrim.checked;
+    persistSettings();
+    const video = activeVideo();
+    const entry = currentViewerEntry();
+    if (video && entry) prepareVideo(video, entry.file, video.dataset.preparing === "true"
+      ? video.dataset.resumeAfterTrim === "true" : !video.paused);
   });
   viewerCopyPath.addEventListener("click", async () => {
     const entry = currentViewerEntry();
@@ -1913,6 +2027,7 @@
     }
   });
   viewer.addEventListener("close", () => {
+    trimRequest++;
     const video = viewerContent.querySelector("video");
     if (video) video.pause();
     viewerContent.replaceChildren();

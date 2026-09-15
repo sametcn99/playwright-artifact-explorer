@@ -18,6 +18,7 @@ No server, build step, or installation required.
 - Refresh the selected folder without reloading the page
 - Image zoom and pan
 - Video timeline, play/pause, mute, and playback speed controls
+- Optional “Skip white intro” detects and skips blank white opening frames during playback
 - Keyboard navigation
 - Dark and light themes
 - Multiple display densities
@@ -26,6 +27,8 @@ No server, build step, or installation required.
 - Lazy-load media for large test runs
 
 Everything runs locally in the browser. Files are not uploaded anywhere.
+
+Enable **Skip white intro** in the video player to start at the first visible content. The preference is remembered, and the timeline and replay start at the detected point. Detection scans up to the first 30 seconds; if no transition is found, playback stays unchanged. This is a playback-only trim: **Save** and **Open tab** use the original video.
 
 ## Usage
 
