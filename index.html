@@ -474,6 +474,10 @@
   kbd { min-width: 28px; padding: 2px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px; background: var(--panel-2); color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: center; }
 
   .toast-stack { position: fixed; right: 18px; bottom: 18px; z-index: 60; display: grid; gap: 8px; pointer-events: none; }
+  .folder-loading-body { padding: 28px; text-align: center; }
+  .folder-loading-spinner { width: 30px; height: 30px; margin: 0 auto 14px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 800ms linear infinite; }
+  .folder-loading-body h3 { margin: 0 0 8px; }
+  .folder-loading-body p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
   .toast { max-width: 360px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 10px; color: var(--text-soft); background: color-mix(in srgb, var(--bg-elevated) 95%, transparent); box-shadow: var(--shadow); backdrop-filter: blur(14px); animation: toast-in 160ms ease-out; }
   @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
 
@@ -759,6 +763,13 @@
   </div>
 </dialog>
 
+<dialog class="help-dialog" id="folder-loading" aria-labelledby="folder-loading-title" aria-describedby="folder-loading-name">
+  <div class="folder-loading-body" role="status" aria-live="polite">
+    <div class="folder-loading-spinner" aria-hidden="true"></div>
+    <h3 id="folder-loading-title" tabindex="-1" autofocus>Loading folder…</h3>
+    <p id="folder-loading-name"></p>
+  </div>
+</dialog>
 <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
 <script>
@@ -846,6 +857,23 @@
   const helpOpen = $("help-open");
   const helpClose = $("help-close");
   const toastStack = $("toast-stack");
+  const folderLoading = $("folder-loading");
+  folderLoading.addEventListener("cancel", event => event.preventDefault());
+
+  async function withFolderLoading(name, action) {
+    if (folderLoading.open) return;
+    $("folder-loading-name").textContent = name;
+    $("main-content").setAttribute("aria-busy", "true");
+    folderLoading.showModal();
+    try {
+      // Paint the indicator before file processing and synchronous gallery rendering.
+      await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      await action();
+    } finally {
+      folderLoading.close();
+      $("main-content").removeAttribute("aria-busy");
+    }
+  }
 
   const statRuns = $("stat-runs");
   const statTests = $("stat-tests");
@@ -1480,13 +1508,16 @@
   }
 
   async function chooseDirectory(fallbackInput) {
+    if (folderLoading.open) return;
     if ("showDirectoryPicker" in window) {
       try {
         const handle = await window.showDirectoryPicker({ mode: "read" });
-        const files = await filesFromDirectory(handle);
-        directoryHandle = handle;
-        loadFiles(files, handle.name, true);
-        rememberFolder(handle.name, handle);
+        await withFolderLoading(handle.name, async () => {
+          const files = await filesFromDirectory(handle);
+          directoryHandle = handle;
+          loadFiles(files, handle.name, true);
+          rememberFolder(handle.name, handle);
+        });
         return;
       } catch (error) {
         if (error?.name === "AbortError") return;
@@ -1872,11 +1903,13 @@
     return nested.flat();
   }
 
-  async function filesFromDrop(event) {
+  function filesFromDrop(event) {
     const items = [...event.dataTransfer.items];
     const entries = items.map((item) => item.webkitGetAsEntry?.()).filter(Boolean);
-    if (entries.length) return (await Promise.all(entries.map((entry) => readDroppedEntry(entry)))).flat();
-    return [...event.dataTransfer.files];
+    const files = [...event.dataTransfer.files];
+    // Capture drop access now, before yielding to paint the loading indicator.
+    return async () => entries.length
+      ? (await Promise.all(entries.map((entry) => readDroppedEntry(entry)))).flat() : files;
   }
 
   function exportSummary() {
@@ -1934,18 +1967,20 @@
 
   openFolder.addEventListener("click", () => chooseDirectory(picker));
   openFolderEmpty.addEventListener("click", () => chooseDirectory(pickerEmpty));
-  picker.addEventListener("change", () => {
-    if (!picker.files.length) return;
-    directoryHandle = null;
-    loadFiles(picker.files, picker.files[0]?.webkitRelativePath?.split("/")[0] || "test-results");
-    rememberFolder(picker.files[0]?.webkitRelativePath?.split("/")[0] || "test-results", null);
-  });
-  pickerEmpty.addEventListener("change", () => {
-    if (!pickerEmpty.files.length) return;
-    directoryHandle = null;
-    loadFiles(pickerEmpty.files, pickerEmpty.files[0]?.webkitRelativePath?.split("/")[0] || "test-results");
-    rememberFolder(pickerEmpty.files[0]?.webkitRelativePath?.split("/")[0] || "test-results", null);
-  });
+  for (const input of [picker, pickerEmpty]) {
+    input.addEventListener("change", async () => {
+      const files = [...input.files];
+      if (!files.length) return;
+      const name = files[0].webkitRelativePath?.split("/")[0] || "test-results";
+      try {
+        await withFolderLoading(name, () => {
+          directoryHandle = null;
+          loadFiles(files, name);
+          rememberFolder(name, null);
+        });
+      } catch { toast("Could not load the folder. Please select it again."); }
+    });
+  }
   refreshFolder.addEventListener("click", async () => {
     refreshFolder.disabled = true;
     refreshFolder.classList.add("is-refreshing");
@@ -1955,9 +1990,11 @@
         await chooseDirectory(picker);
         return;
       }
-      const files = await filesFromDirectory(directoryHandle);
-      loadFiles(files, directoryHandle.name, true);
-      toast("Folder refreshed");
+      await withFolderLoading(directoryHandle.name, async () => {
+        const files = await filesFromDirectory(directoryHandle);
+        loadFiles(files, directoryHandle.name, true);
+        toast("Folder refreshed");
+      });
     } catch (error) {
       console.error(error);
       toast("Could not refresh the folder. Open it again to renew access.");
@@ -1974,14 +2011,17 @@
     dropzone.addEventListener(eventName, (event) => { event.preventDefault(); dropzone.classList.remove("is-dragging"); });
   }
   dropzone.addEventListener("drop", async (event) => {
+    if (folderLoading.open) return;
     try {
-      const handlePending = event.dataTransfer.items[0]?.getAsFileSystemHandle?.();
-      const filesPending = filesFromDrop(event);
-      const [droppedHandle, files] = await Promise.all([handlePending, filesPending]);
-      directoryHandle = droppedHandle?.kind === "directory" ? droppedHandle : null;
-      const name = directoryHandle?.name || (files[0] ? pathFor(files[0]).split("/").slice(0, -1)[0] : "") || "dropped folder";
-      loadFiles(files, name);
-      if (directoryHandle || name !== "dropped folder") rememberFolder(name, directoryHandle);
+      const handlePending = event.dataTransfer.items[0]?.getAsFileSystemHandle?.().catch(() => null);
+      const readFiles = filesFromDrop(event);
+      await withFolderLoading("Dropped folder", async () => {
+        const [droppedHandle, files] = await Promise.all([handlePending, readFiles()]);
+        directoryHandle = droppedHandle?.kind === "directory" ? droppedHandle : null;
+        const name = directoryHandle?.name || (files[0] ? pathFor(files[0]).split("/").slice(0, -1)[0] : "") || "dropped folder";
+        loadFiles(files, name);
+        if (directoryHandle || name !== "dropped folder") rememberFolder(name, directoryHandle);
+      });
     } catch (error) {
       console.error(error);
       toast("Could not read the dropped folder. Use Open folder instead.");
@@ -2022,7 +2062,7 @@
   helpDialog.addEventListener("click", (event) => { if (event.target === helpDialog) helpDialog.close(); });
 
   document.addEventListener("keydown", (event) => {
-    if (viewer.open || helpDialog.open || restoreFolderDialog.open) return;
+    if (viewer.open || helpDialog.open || restoreFolderDialog.open || folderLoading.open) return;
     if (event.key === "/" && document.activeElement !== searchEl) {
       event.preventDefault();
       searchEl.focus();
@@ -2167,9 +2207,11 @@
         restoreFolderLoad.textContent = "Select folder again";
         return;
       }
-      const files = await filesFromDirectory(rememberedHandle);
-      directoryHandle = rememberedHandle;
-      loadFiles(files, rememberedHandle.name, true);
+      await withFolderLoading(rememberedHandle.name, async () => {
+        const files = await filesFromDirectory(rememberedHandle);
+        directoryHandle = rememberedHandle;
+        loadFiles(files, rememberedHandle.name, true);
+      });
       restoreFolderDialog.close();
     } catch {
       rememberedHandle = null;
