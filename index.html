@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Artifacts">
 <title>Playwright Artifact Explorer — Screenshots &amp; Videos</title>
 <meta name="description" content="Explore Playwright test screenshots and videos in your browser. Filter failures, inspect recordings, compare artifacts, and keep every file private.">
 <meta name="keywords" content="Playwright artifact viewer, Playwright test results, screenshot viewer, test video viewer, end-to-end testing">
@@ -127,8 +131,7 @@
   #main-content { scroll-margin-top: 80px; }
 
   .topbar {
-    position: sticky;
-    top: 0;
+    position: relative;
     z-index: 20;
     margin: 0 -24px;
     padding: 14px 24px;
@@ -252,7 +255,7 @@
 
   .controls {
     position: sticky;
-    top: 65px;
+    top: 0;
     z-index: 15;
     display: flex;
     align-items: center;
@@ -454,7 +457,7 @@
   .viewer-nav:disabled { visibility: hidden; }
   .viewer-prev { left: 12px; }
   .viewer-next { right: 12px; }
-  .viewer-strip { position: relative; z-index: 3; min-height: 86px; max-height: 86px; display: flex; gap: 7px; overflow-x: auto; padding: 9px 10px 10px; border-top: 1px solid #202734; background: #0d1118; scrollbar-color: #46536a #111722; }
+  .viewer-strip { position: relative; z-index: 3; flex: 0 0 auto; min-height: 86px; display: flex; gap: 7px; overflow-x: auto; overflow-y: hidden; padding: 9px 10px 10px; border-top: 1px solid #202734; background: #0d1118; scrollbar-color: #46536a #111722; }
   .viewer-thumb { position: relative; flex: 0 0 110px; width: 110px; height: 66px; padding: 0; overflow: hidden; border: 1px solid #283143; border-radius: 7px; background: #06080c; color: #8d98ab; cursor: pointer; }
   .viewer-thumb[aria-current="true"] { border-color: #79a7ff; box-shadow: 0 0 0 2px rgb(79 134 247 / 28%); }
   .viewer-thumb img { width: 100%; height: 100%; object-fit: cover; }
@@ -496,7 +499,7 @@
     .hero { padding-top: 24px; }
     .hero h1 { font-size: clamp(29px, 10vw, 42px); }
     .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .controls { top: 65px; }
+    .controls { top: 0; }
     .search-wrap { min-width: 100%; flex-basis: 100%; }
     .result-count { width: 100%; margin-left: 0; }
     .control-divider { display: none; }
@@ -643,6 +646,10 @@
 
         <div class="control-divider" aria-hidden="true"></div>
 
+        <label class="select-wrap" title="Optional: paste the full path of the selected folder for absolute trace commands.">
+          <span>Folder path</span>
+          <input id="trace-root" type="text" placeholder="C:\path\to\test-results" aria-label="Full path of selected folder" style="min-width: 120px; width: 210px; border: 0; background: transparent; color: var(--text-soft)">
+        </label>
         <button class="btn" id="expand" type="button">Expand all</button>
         <button class="btn" id="export-summary" type="button">Export summary</button>
         <span class="result-count" id="counts"></span>
@@ -656,6 +663,7 @@
   <footer class="site-footer">
     <span>Built for faster, private Playwright debugging.</span>
     <nav class="footer-links" aria-label="Project links">
+      <button class="btn" id="install-app" type="button" hidden>Install app</button>
       <a href="https://github.com/sametcn99/playwright-artifact-explorer" target="_blank" rel="noopener noreferrer">GitHub</a>
       <a href="https://playwright-artifact-explorer.vercel.app/" aria-current="page">Live app</a>
     </nav>
@@ -738,6 +746,19 @@
   </div>
 </dialog>
 
+<dialog class="help-dialog" id="restore-folder-dialog" aria-labelledby="restore-folder-title" aria-describedby="restore-folder-description">
+  <div class="help-head"><h3 id="restore-folder-title">Load your last folder?</h3></div>
+  <div class="help-body">
+    <p id="restore-folder-description">Continue from <strong id="restore-folder-name" style="overflow-wrap: anywhere"></strong>?</p>
+    <p id="restore-folder-message" role="status">Your browser may ask for permission to read this folder again.</p>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap">
+      <button class="btn primary" id="restore-folder-load" type="button">Load folder</button>
+      <button class="btn" id="restore-folder-later" type="button" autofocus>Not now</button>
+      <button class="btn ghost" id="restore-folder-forget" type="button">Forget folder</button>
+    </div>
+  </div>
+</dialog>
+
 <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
 <script>
@@ -746,6 +767,58 @@
   const VIDEO = /\.(webm|mp4)$/i;
   const TRACE = /(?:^|[-_.])trace(?:[-_.].*)?\.(?:zip|trace)$/i;
   const SETTINGS_KEY = "playwright-artifact-explorer-v2";
+  const LAST_FOLDER_KEY = `${SETTINGS_KEY}-last-folder`;
+  const restoreFolderDialog = document.getElementById("restore-folder-dialog");
+  const restoreFolderLoad = document.getElementById("restore-folder-load");
+  const restoreFolderMessage = document.getElementById("restore-folder-message");
+  let rememberedHandle = null;
+  let folderStorageQueue = Promise.resolve();
+
+  // Directory handles cannot be serialized to localStorage. IndexedDB preserves them.
+  function folderStore(operation, record) {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open("playwright-artifact-explorer-folders", 1);
+      request.onupgradeneeded = () => request.result.createObjectStore("folders");
+      request.onerror = () => reject(request.error);
+      request.onblocked = () => reject(new Error("Folder storage is blocked"));
+      request.onsuccess = () => {
+        const db = request.result;
+        db.onversionchange = () => db.close();
+        try {
+          const tx = db.transaction("folders", operation === "get" ? "readonly" : "readwrite");
+          const store = tx.objectStore("folders");
+          const action = operation === "get" ? store.get("last")
+            : operation === "put" ? store.put(record, "last") : store.delete("last");
+          tx.oncomplete = () => { db.close(); resolve(action.result); };
+          tx.onabort = tx.onerror = () => { db.close(); reject(tx.error); };
+        } catch (error) { db.close(); reject(error); }
+      };
+    });
+  }
+
+  function rememberFolder(name, handle) {
+    const record = { name, id: `${Date.now()}-${Math.random()}` };
+    try { localStorage.setItem(LAST_FOLDER_KEY, JSON.stringify(record)); } catch {}
+    folderStorageQueue = folderStorageQueue.then(() => folderStore("put", { ...record, handle }))
+      .catch(() => { toast("Folder remembered by name. Select it again when reopening."); });
+  }
+
+  async function offerLastFolder() {
+    let record;
+    try { record = JSON.parse(localStorage.getItem(LAST_FOLDER_KEY)); } catch { return; }
+    if (!record || typeof record.name !== "string" || !record.name) return;
+    try {
+      const stored = await folderStore("get");
+      if (stored?.id === record.id && stored.handle?.kind === "directory") rememberedHandle = stored.handle;
+    } catch {}
+    if (directoryHandle || sourceFiles.length) return;
+    $("restore-folder-name").textContent = state.traceFolder === record.name && state.traceRoot ? state.traceRoot : record.name;
+    if (!rememberedHandle) {
+      restoreFolderLoad.textContent = "Select folder again";
+      restoreFolderMessage.textContent = "Select this folder again to continue.";
+    }
+    restoreFolderDialog.showModal();
+  }
 
   const $ = (id) => document.getElementById(id);
   const picker = $("picker");
@@ -764,6 +837,7 @@
   const sortSelect = $("sort-select");
   const densitySelect = $("density-select");
   const traceRunner = $("trace-runner");
+  const traceRoot = $("trace-root");
   const expandBtn = $("expand");
   const exportSummaryBtn = $("export-summary");
   const activeNote = $("active-note");
@@ -830,8 +904,11 @@
     sort: "newest",
     density: "comfortable",
     playbackRate: 1,
+    videoMuted: true,
     trimWhiteIntro: false,
     traceRunner: "bun",
+    traceRoot: "",
+    traceFolder: "",
   };
 
   function iconMarkup(kind) {
@@ -856,15 +933,18 @@
         density: state.density,
         sort: state.sort,
         playbackRate: state.playbackRate,
+        videoMuted: state.videoMuted,
         trimWhiteIntro: state.trimWhiteIntro,
         traceRunner: state.traceRunner,
+        traceRoot: state.traceRoot,
+        traceFolder: state.traceFolder,
       }));
     } catch {}
   }
 
   function restoreSettings() {
     let saved = {};
-    try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); } catch {}
+    try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") || {}; } catch {}
     const preferredTheme = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
     document.documentElement.dataset.theme = saved.theme || preferredTheme;
     state.density = ["compact", "comfortable", "large"].includes(saved.density) ? saved.density : "comfortable";
@@ -877,7 +957,11 @@
     traceRunner.value = state.traceRunner;
     videoSpeed.value = String(state.playbackRate);
     state.trimWhiteIntro = saved.trimWhiteIntro === true;
+    state.videoMuted = typeof saved.videoMuted === "boolean" ? saved.videoMuted : true;
     videoTrim.checked = state.trimWhiteIntro;
+    state.traceRoot = typeof saved.traceRoot === "string" ? saved.traceRoot : "";
+    state.traceFolder = typeof saved.traceFolder === "string" ? saved.traceFolder : "";
+    traceRoot.value = state.traceRoot;
   }
 
   function scrollThumbIntoView(thumb) {
@@ -1004,7 +1088,14 @@
     if (sourcePathPrefix && !relativePath.toLowerCase().startsWith(`${sourcePathPrefix.toLowerCase()}/`)) {
       relativePath = `${sourcePathPrefix}/${relativePath}`;
     }
-    const quotedPath = `"./${relativePath}"`;
+    let commandPath = `./${relativePath}`;
+    const root = state.traceRoot.trim().replace(/\\/g, "/");
+    if (/^(?:[a-z]:\/|\/)/i.test(root)) {
+      const folderName = loadedMeta.dataset.source || "";
+      if (folderName && relativePath.startsWith(`${folderName}/`)) relativePath = relativePath.slice(folderName.length + 1);
+      commandPath = `${root.replace(/\/+$/, "")}/${relativePath}`;
+    }
+    const quotedPath = `"${commandPath}"`;
     const commands = {
       bun: `bunx playwright show-trace ${quotedPath}`,
       npm: `npx playwright show-trace ${quotedPath}`,
@@ -1395,6 +1486,7 @@
         const files = await filesFromDirectory(handle);
         directoryHandle = handle;
         loadFiles(files, handle.name, true);
+        rememberFolder(handle.name, handle);
         return;
       } catch (error) {
         if (error?.name === "AbortError") return;
@@ -1406,6 +1498,12 @@
   }
 
   function loadFiles(files, sourceLabel = "test-results", includeSourceRoot = false) {
+    if (state.traceFolder !== sourceLabel) {
+      state.traceRoot = "";
+      traceRoot.value = "";
+    }
+    state.traceFolder = sourceLabel;
+    persistSettings();
     releaseObjectUrls();
     const selectedFiles = [...files];
     sourceFiles = selectedFiles.filter((file) => IMAGE.test(file.name) || VIDEO.test(file.name));
@@ -1686,7 +1784,7 @@
       media.controls = false;
       media.autoplay = false;
       media.loop = false;
-      media.muted = true;
+      media.muted = state.videoMuted;
       media.playbackRate = state.playbackRate;
       media.playsInline = true;
       media.preload = "auto";
@@ -1837,12 +1935,16 @@
   openFolder.addEventListener("click", () => chooseDirectory(picker));
   openFolderEmpty.addEventListener("click", () => chooseDirectory(pickerEmpty));
   picker.addEventListener("change", () => {
+    if (!picker.files.length) return;
     directoryHandle = null;
     loadFiles(picker.files, picker.files[0]?.webkitRelativePath?.split("/")[0] || "test-results");
+    rememberFolder(picker.files[0]?.webkitRelativePath?.split("/")[0] || "test-results", null);
   });
   pickerEmpty.addEventListener("change", () => {
+    if (!pickerEmpty.files.length) return;
     directoryHandle = null;
     loadFiles(pickerEmpty.files, pickerEmpty.files[0]?.webkitRelativePath?.split("/")[0] || "test-results");
+    rememberFolder(pickerEmpty.files[0]?.webkitRelativePath?.split("/")[0] || "test-results", null);
   });
   refreshFolder.addEventListener("click", async () => {
     refreshFolder.disabled = true;
@@ -1873,10 +1975,13 @@
   }
   dropzone.addEventListener("drop", async (event) => {
     try {
-      const droppedHandle = await event.dataTransfer.items[0]?.getAsFileSystemHandle?.();
-      const files = await filesFromDrop(event);
+      const handlePending = event.dataTransfer.items[0]?.getAsFileSystemHandle?.();
+      const filesPending = filesFromDrop(event);
+      const [droppedHandle, files] = await Promise.all([handlePending, filesPending]);
       directoryHandle = droppedHandle?.kind === "directory" ? droppedHandle : null;
-      loadFiles(files, "dropped folder");
+      const name = directoryHandle?.name || (files[0] ? pathFor(files[0]).split("/").slice(0, -1)[0] : "") || "dropped folder";
+      loadFiles(files, name);
+      if (directoryHandle || name !== "dropped folder") rememberFolder(name, directoryHandle);
     } catch (error) {
       console.error(error);
       toast("Could not read the dropped folder. Use Open folder instead.");
@@ -1895,6 +2000,14 @@
   sortSelect.addEventListener("change", () => { state.sort = sortSelect.value; persistSettings(); render(); });
   densitySelect.addEventListener("change", () => { state.density = densitySelect.value; document.body.dataset.density = state.density; persistSettings(); });
   traceRunner.addEventListener("change", () => { state.traceRunner = traceRunner.value; persistSettings(); render(); });
+  traceRoot.addEventListener("input", () => {
+    const value = traceRoot.value.trim();
+    const valid = !value || /^(?:[a-z]:[\\/]|\/)/i.test(value);
+    traceRoot.setCustomValidity(valid ? "" : "Enter an absolute folder path, such as C:\\projects\\test-results or /home/me/test-results.");
+    state.traceRoot = valid ? value : "";
+    persistSettings();
+  });
+  traceRoot.addEventListener("change", () => traceRoot.reportValidity());
   expandBtn.addEventListener("click", () => {
     const all = [...runsEl.querySelectorAll("details.run")];
     const opening = all.some((details) => !details.open);
@@ -1909,7 +2022,7 @@
   helpDialog.addEventListener("click", (event) => { if (event.target === helpDialog) helpDialog.close(); });
 
   document.addEventListener("keydown", (event) => {
-    if (viewer.open || helpDialog.open) return;
+    if (viewer.open || helpDialog.open || restoreFolderDialog.open) return;
     if (event.key === "/" && document.activeElement !== searchEl) {
       event.preventDefault();
       searchEl.focus();
@@ -1939,6 +2052,8 @@
     const video = activeVideo();
     if (!video) return;
     video.muted = !video.muted;
+    state.videoMuted = video.muted;
+    persistSettings();
   });
   videoSpeed.addEventListener("change", () => {
     const video = activeVideo();
@@ -2036,8 +2151,62 @@
     viewerIndex = -1;
   });
 
+  restoreFolderLoad.addEventListener("click", async () => {
+    if (!rememberedHandle) {
+      restoreFolderDialog.close();
+      await chooseDirectory(picker);
+      return;
+    }
+    restoreFolderLoad.disabled = true;
+    try {
+      // Request from this click handler to preserve the browser's user activation.
+      const permission = await rememberedHandle.requestPermission({ mode: "read" });
+      if (permission !== "granted") {
+        restoreFolderMessage.textContent = "Read access was not granted. Try again or select the folder again.";
+        rememberedHandle = null;
+        restoreFolderLoad.textContent = "Select folder again";
+        return;
+      }
+      const files = await filesFromDirectory(rememberedHandle);
+      directoryHandle = rememberedHandle;
+      loadFiles(files, rememberedHandle.name, true);
+      restoreFolderDialog.close();
+    } catch {
+      rememberedHandle = null;
+      restoreFolderLoad.textContent = "Select folder again";
+      restoreFolderMessage.textContent = "This folder is no longer accessible. Select it again to continue.";
+    } finally { restoreFolderLoad.disabled = false; }
+  });
+  $("restore-folder-later").addEventListener("click", () => restoreFolderDialog.close());
+  $("restore-folder-forget").addEventListener("click", () => {
+    try { localStorage.removeItem(LAST_FOLDER_KEY); } catch {}
+    rememberedHandle = null;
+    folderStorageQueue = folderStorageQueue.then(() => folderStore("delete")).catch(() => {});
+    restoreFolderDialog.close();
+  });
+
   restoreSettings();
   syncSegments();
+  offerLastFolder();
+
+  let installPrompt = null;
+  const installApp = $("install-app");
+  window.addEventListener("beforeinstallprompt", event => {
+    event.preventDefault();
+    installPrompt = event;
+    installApp.hidden = false;
+  });
+  installApp.addEventListener("click", async () => {
+    if (!installPrompt) return;
+    const prompt = installPrompt;
+    installPrompt = null;
+    installApp.hidden = true;
+    try { await prompt.prompt(); } catch { toast("Use your browser menu to install the app."); }
+  });
+  window.addEventListener("appinstalled", () => { installPrompt = null; installApp.hidden = true; });
+  if ("serviceWorker" in navigator && ["https:", "http:"].includes(location.protocol)) {
+    navigator.serviceWorker.register("./sw.js").catch(error => console.warn("Offline support unavailable:", error));
+  }
 })();
 </script>
 </body>
